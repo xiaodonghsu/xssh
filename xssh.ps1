@@ -16,6 +16,7 @@ xssh - SSH 快速连接管理器
 用法:
   .\xssh.ps1 [Host别名]            # 连接到指定服务器
   .\xssh.ps1 -l, --list            # 列出所有可用服务器
+  .\xssh.ps1 -n, --number <序号>   # 按列表序号连接服务器
   .\xssh.ps1 -a, --add             # 添加新服务器
   .\xssh.ps1 -e, --edit            # 编辑配置文件
   .\xssh.ps1 -c, --copy            # 复制Host别名到剪贴板
@@ -30,6 +31,7 @@ xssh - SSH 快速连接管理器
 
 示例:
   .\xssh.ps1 web-server-1          # 连接到 web-server-1
+  .\xssh.ps1 -n 1                  # 连接列表中的第 1 个服务器
   .\xssh.ps1 -l                    # 列出所有服务器
   .\xssh.ps1 -a                    # 添加新服务器
   .\xssh.ps1 -c web-server-1       # 复制连接命令
@@ -165,17 +167,43 @@ function List-Servers {
     }
     
     Write-Host "可用的服务器:"
-    Write-Host "────────────────────────────────────────────────────────"
-    Write-Host ("  {0,-20}  {1}@{2}:{3}" -f "Host别名", "用户", "主机", "端口")
-    Write-Host "────────────────────────────────────────────────────────"
+    Write-Host "────────────────────────────────────────────────────────────────"
+    Write-Host ("  {0,-4}  {1,-20}  {2}@{3}:{4}" -f "序号", "Host别名", "用户", "主机", "端口")
+    Write-Host "────────────────────────────────────────────────────────────────"
     
+    $index = 1
     foreach ($h in $hosts) {
         $config = Parse-HostConfig $h
         if ($null -ne $config) {
-            Write-Host ("  {0,-20}  {1}@{2}:{3}" -f $h, $config.User, $config.HostName, $config.Port)
+            Write-Host ("  {0,-4}  {1,-20}  {2}@{3}:{4}" -f $index, $h, $config.User, $config.HostName, $config.Port)
         }
+        $index++
     }
-    Write-Host "────────────────────────────────────────────────────────"
+    Write-Host "────────────────────────────────────────────────────────────────"
+}
+
+# 按列表序号获取 Host（1-based）
+function Get-HostByNumber {
+    param([string]$Number)
+
+    $hosts = @(Get-Hosts)
+    if ($hosts.Count -eq 0) {
+        Write-Error "没有配置任何 Host"
+        return $null
+    }
+
+    $index = 0
+    if (-not [int]::TryParse($Number, [ref]$index) -or $index -lt 1) {
+        Write-Error "错误: 序号必须是大于 0 的整数"
+        return $null
+    }
+
+    if ($index -gt $hosts.Count) {
+        Write-Error "错误: 序号 $index 超出范围，可用范围: 1-$($hosts.Count)"
+        return $null
+    }
+
+    return $hosts[$index - 1]
 }
 
 # 添加新服务器（交互式）
@@ -361,13 +389,39 @@ function Main {
     }
     
     # 获取第一个参数作为操作指令
-    $Command = $Arguments
+    $Command = $Arguments[0]
     
     switch ($Command) {
         "-h" { Show-Help }
         "--help" { Show-Help }
         "-l" { List-Servers }
         "--list" { List-Servers }
+        "-n" {
+            if ($Arguments.Count -lt 2) {
+                Write-Error "错误: 请指定服务器序号"
+                Write-Error "用法: .\xssh.ps1 -n <序号>"
+            } else {
+                $hostAlias = Get-HostByNumber $Arguments[1]
+                if ($null -eq $hostAlias) {
+                    List-Servers
+                    return
+                }
+                Connect-Server $hostAlias
+            }
+        }
+        "--number" {
+            if ($Arguments.Count -lt 2) {
+                Write-Error "错误: 请指定服务器序号"
+                Write-Error "用法: .\xssh.ps1 -n <序号>"
+            } else {
+                $hostAlias = Get-HostByNumber $Arguments[1]
+                if ($null -eq $hostAlias) {
+                    List-Servers
+                    return
+                }
+                Connect-Server $hostAlias
+            }
+        }
         "-a" { Add-Server }
         "--add" { Add-Server }
         "-e" { Edit-Config }
@@ -378,7 +432,7 @@ function Main {
                 Write-Error "错误: 请指定 Host 别名"
                 Write-Error "用法: .\xssh.ps1 -c <Host别名>"
             } else {
-                Copy-ToClipboard $Arguments
+                Copy-ToClipboard $Arguments[1]
             }
         }
         "--copy" {
@@ -386,7 +440,7 @@ function Main {
                 Write-Error "错误: 请指定 Host 别名"
                 Write-Error "用法: .\xssh.ps1 -c <Host别名>"
             } else {
-                Copy-ToClipboard $Arguments
+                Copy-ToClipboard $Arguments[1]
             }
         }
         

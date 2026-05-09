@@ -18,6 +18,7 @@ xssh - SSH 快速连接管理器
 用法:
   xssh [Host别名]            # 连接到指定服务器
   xssh -l, --list            # 列出所有可用服务器
+  xssh -n, --number <序号>   # 按列表序号连接服务器
   xssh -a, --add             # 添加新服务器
   xssh -e, --edit            # 编辑配置文件
   xssh -c, --copy            # 复制Host别名到剪贴板
@@ -32,6 +33,7 @@ xssh - SSH 快速连接管理器
 
 示例:
   xssh web-server-1          # 连接到 web-server-1
+  xssh -n 1                  # 连接列表中的第 1 个服务器
   xssh -l                    # 列出所有服务器
   xssh -a                    # 添加新服务器
   xssh -c web-server-1       # 复制连接命令
@@ -122,20 +124,47 @@ list_servers() {
     fi
     
     echo "可用的服务器:"
-    echo "────────────────────────────────────────────────────────"
-    printf "  %-20s  %s@%s:%s\n" "Host别名" "用户" "主机" "端口"
-    echo "────────────────────────────────────────────────────────"
+    echo "────────────────────────────────────────────────────────────────"
+    printf "  %-4s  %-20s  %s@%s:%s\n" "序号" "Host别名" "用户" "主机" "端口"
+    echo "────────────────────────────────────────────────────────────────"
     
+    local index=1
     while IFS= read -r host; do
         local config=$(parse_host_config "$host")
         if [[ $? -eq 0 ]]; then
             local hostname=$(echo "$config" | cut -d'|' -f1)
             local port=$(echo "$config" | cut -d'|' -f2)
             local user=$(echo "$config" | cut -d'|' -f3)
-            printf "  %-20s  %s@%s:%s\n" "$host" "$user" "$hostname" "$port"
+            printf "  %-4s  %-20s  %s@%s:%s\n" "$index" "$host" "$user" "$hostname" "$port"
         fi
+        ((index++))
     done <<< "$hosts"
-    echo "────────────────────────────────────────────────────────"
+    echo "────────────────────────────────────────────────────────────────"
+}
+
+# 按列表序号获取 Host（1-based）
+get_host_by_number() {
+    local number=$1
+    local hosts=$(get_hosts)
+
+    if [[ -z "$hosts" ]]; then
+        echo "没有配置任何 Host" >&2
+        return 1
+    fi
+
+    if [[ ! "$number" =~ ^[0-9]+$ ]] || [[ "$number" -lt 1 ]]; then
+        echo "错误: 序号必须是大于 0 的整数" >&2
+        return 1
+    fi
+
+    local host=$(echo "$hosts" | sed -n "${number}p")
+    if [[ -z "$host" ]]; then
+        local count=$(echo "$hosts" | wc -l | tr -d ' ')
+        echo "错误: 序号 $number 超出范围，可用范围: 1-$count" >&2
+        return 1
+    fi
+
+    echo "$host"
 }
 
 # 添加新服务器（交互式）
@@ -322,6 +351,20 @@ main() {
         -l|--list)
             list_servers
             ;;
+        -n|--number)
+            if [[ -z "$2" ]]; then
+                echo "错误: 请指定服务器序号" >&2
+                echo "用法: xssh -n <序号>" >&2
+                return 1
+            fi
+            local host
+            host=$(get_host_by_number "$2")
+            if [[ $? -ne 0 ]]; then
+                list_servers >&2
+                return 1
+            fi
+            connect_server "$host"
+            ;;
         -a|--add)
             add_server
             ;;
@@ -349,4 +392,3 @@ main() {
 }
 
 main "$@"
-

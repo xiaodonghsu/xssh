@@ -1,0 +1,17 @@
+Host nuc10
+    HostName nuc10.nps.uassist.cn
+    User adone
+    Port 59130
+
+Host nuc11
+    HostName nuc11.nps.uassist.cn
+    User adone
+    Port 59138
+
+Host pi4b-home
+    HostName pi4b-home.office.uassist.cn
+    User pi
+    Port 4001901~ODOD:wq:qwq
+
+1
+\\OP`[Z[O[I
