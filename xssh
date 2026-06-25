@@ -30,9 +30,11 @@ xssh - SSH 快速连接管理器
   • 完全兼容 SSH config 格式
   • 与 VSCode Remote SSH 共用同一配置
   • 标准 SSH 命令行工具兼容
+  • 包含 LocalForward 的 Host 自动以隧道模式运行并断线重连
 
 示例:
   xssh web-server-1          # 连接到 web-server-1
+  xssh tunnel-host           # LocalForward Host 会自动保持隧道在线
   xssh -n 1                  # 连接列表中的第 1 个服务器
   xssh -l                    # 列出所有服务器
   xssh -a                    # 添加新服务器
@@ -111,6 +113,72 @@ parse_host_config() {
     : ${user:=$USER}
     
     echo "$hostname|$port|$user|$identity_file|$strict_check"
+}
+
+# 解析特定 Host 的 LocalForward 配置
+get_local_forwards() {
+    local host=$1
+    local in_host=0
+
+    while IFS= read -r line; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+        [[ "$line" =~ ^# ]] && continue
+        [[ -z "$line" ]] && continue
+
+        if [[ "$line" =~ ^Host[[:space:]]+ ]]; then
+            if [[ $in_host -eq 1 ]]; then
+                break
+            fi
+            local check_host=$(echo "$line" | awk '{print $2}')
+            if [[ "$check_host" == "$host" ]]; then
+                in_host=1
+            fi
+            continue
+        fi
+
+        if [[ $in_host -eq 1 ]]; then
+            local key=$(echo "$line" | awk '{print $1}')
+            local value=$(echo "$line" | awk '{$1=""; print $0}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+            if [[ "$key" == "LocalForward" ]]; then
+                echo "$value"
+            fi
+        fi
+    done < "$CONFIG_FILE"
+}
+
+# 显示 LocalForward 配置
+show_local_forwards() {
+    local local_forwards=$1
+
+    [[ -z "$local_forwards" ]] && return 0
+
+    echo "LocalForward:" >&2
+    while IFS= read -r forward; do
+        echo "  $forward" >&2
+    done <<< "$local_forwards"
+    echo "" >&2
+}
+
+# 以隧道模式连接，并在 ssh 退出后自动重连
+connect_tunnel() {
+    local host=$1
+    local local_forwards=$2
+    local arguments=("-N" "-T" "$host")
+
+    show_local_forwards "$local_forwards"
+
+    echo "隧道模式: ssh ${arguments[*]}" >&2
+    echo "按 Ctrl+C 停止" >&2
+    echo "" >&2
+
+    while true; do
+        echo "$(date '+%Y-%m-%d %H:%M:%S') starting ssh tunnel..."
+        ssh "${arguments[@]}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') ssh tunnel exited, retry in 10 seconds..."
+        sleep 10
+    done
 }
 
 # 列出所有服务器
@@ -260,10 +328,16 @@ connect_server() {
     local hostname=$(echo "$config" | cut -d'|' -f1)
     local port=$(echo "$config" | cut -d'|' -f2)
     local user=$(echo "$config" | cut -d'|' -f3)
+    local local_forwards=$(get_local_forwards "$host")
     
     echo "正在连接..." >&2
     echo "Host: $host (${user}@${hostname}:${port})" >&2
     echo "" >&2
+
+    if [[ -n "$local_forwards" ]]; then
+        connect_tunnel "$host" "$local_forwards"
+        return $?
+    fi
     
     # 使用 SSH 连接，让 SSH 读取配置文件处理所有细节
     ssh "$host"

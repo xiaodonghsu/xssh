@@ -28,9 +28,11 @@ xssh - SSH 快速连接管理器
   • 完全兼容 SSH config 格式
   • 与 VSCode Remote SSH 共用同一配置
   • 标准 SSH 命令行工具兼容
+  • 包含 LocalForward 的 Host 自动以隧道模式运行并断线重连
 
 示例:
   .\xssh.ps1 web-server-1          # 连接到 web-server-1
+  .\xssh.ps1 tunnel-host           # LocalForward Host 会自动保持隧道在线
   .\xssh.ps1 -n 1                  # 连接列表中的第 1 个服务器
   .\xssh.ps1 -l                    # 列出所有服务器
   .\xssh.ps1 -a                    # 添加新服务器
@@ -102,6 +104,7 @@ function Parse-HostConfig {
     $port = "22"
     $identityFile = ""
     $strictCheck = ""
+    $localForwards = @()
 
     $lines = Get-Content $ConfigFile
     foreach ($line in $lines) {
@@ -137,6 +140,7 @@ function Parse-HostConfig {
                 "Port"     { $port = $value }
                 "IdentityFile" { $identityFile = $value }
                 "StrictHostKeyChecking" { $strictCheck = $value }
+                "LocalForward" { $localForwards += $value }
             }
         }
     }
@@ -153,6 +157,46 @@ function Parse-HostConfig {
         User          = $user
         IdentityFile  = $identityFile
         StrictCheck   = $strictCheck
+        LocalForwards = $localForwards
+    }
+}
+
+# 显示 LocalForward 配置
+function Show-LocalForwards {
+    param([string[]]$LocalForwards)
+
+    if ($LocalForwards.Count -eq 0) {
+        return
+    }
+
+    Write-Host "LocalForward:"
+    foreach ($forward in $LocalForwards) {
+        Write-Host "  $forward"
+    }
+    Write-Host ""
+}
+
+# 以隧道模式连接，并在 ssh 退出后自动重连
+function Connect-Tunnel {
+    param(
+        [string]$HostAlias,
+        [string[]]$LocalForwards
+    )
+
+    Show-LocalForwards $LocalForwards
+
+    $ssh = "ssh"
+    $arguments = @("-N", "-T", $HostAlias)
+
+    Write-Host "隧道模式: $ssh $($arguments -join ' ')"
+    Write-Host "按 Ctrl+C 停止"
+    Write-Host ""
+
+    while ($true) {
+        Write-Output "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') starting ssh tunnel..."
+        & $ssh @arguments
+        Write-Output "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ssh tunnel exited, retry in 10 seconds..."
+        Start-Sleep -Seconds 10
     }
 }
 
@@ -301,6 +345,11 @@ function Connect-Server {
     Write-Host "正在连接..."
     Write-Host "Host: $HostAlias ($($config.User)@$($config.HostName):$($config.Port))"
     Write-Host ""
+
+    if ($config.LocalForwards.Count -gt 0) {
+        Connect-Tunnel $HostAlias $config.LocalForwards
+        return
+    }
     
     # 使用 SSH 连接，让 SSH 读取配置文件处理所有细节
     # 使用 cmd /c 确保 ssh 进程接管标准输入输出流，支持交互式会话
