@@ -115,8 +115,8 @@ parse_host_config() {
     echo "$hostname|$port|$user|$identity_file|$strict_check"
 }
 
-# 解析特定 Host 的 LocalForward 配置
-get_local_forwards() {
+# 解析特定 Host 的端口转发配置
+get_forward_rules() {
     local host=$1
     local in_host=0
 
@@ -141,11 +141,18 @@ get_local_forwards() {
             local key=$(echo "$line" | awk '{print $1}')
             local value=$(echo "$line" | awk '{$1=""; print $0}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-            if [[ "$key" == "LocalForward" ]]; then
-                echo "$value"
-            fi
+            case "$key" in
+                LocalForward|DynamicForward|RemoteForward)
+                    echo "$key $value"
+                    ;;
+            esac
         fi
     done < "$CONFIG_FILE"
+}
+
+# 解析特定 Host 的 LocalForward 配置
+get_local_forwards() {
+    get_forward_rules "$1" | sed -n 's/^LocalForward //p'
 }
 
 # 显示 LocalForward 配置
@@ -192,9 +199,9 @@ list_servers() {
     fi
     
     echo "可用的服务器:"
-    echo "────────────────────────────────────────────────────────────────"
-    printf "  %-4s  %-20s  %s@%s:%s\n" "序号" "Host别名" "用户" "主机" "端口"
-    echo "────────────────────────────────────────────────────────────────"
+    echo "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    printf "  %-4s  %-20s  %-35s  %s\n" "序号" "Host别名" "服务器" "端口转发"
+    echo "────────────────────────────────────────────────────────────────────────────────────────────────────"
     
     local index=1
     while IFS= read -r host; do
@@ -203,11 +210,13 @@ list_servers() {
             local hostname=$(echo "$config" | cut -d'|' -f1)
             local port=$(echo "$config" | cut -d'|' -f2)
             local user=$(echo "$config" | cut -d'|' -f3)
-            printf "  %-4s  %-20s  %s@%s:%s\n" "$index" "$host" "$user" "$hostname" "$port"
+            local server="${user}@${hostname}:${port}"
+            local forward_rules=$(get_forward_rules "$host" | awk 'BEGIN { sep = "" } { printf "%s%s", sep, $0; sep = "; " }')
+            printf "  %-4s  %-20s  %-35s  %s\n" "$index" "$host" "$server" "$forward_rules"
         fi
         ((index++))
     done <<< "$hosts"
-    echo "────────────────────────────────────────────────────────────────"
+    echo "────────────────────────────────────────────────────────────────────────────────────────────────────"
 }
 
 # 按列表序号获取 Host（1-based）

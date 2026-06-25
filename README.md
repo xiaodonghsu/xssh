@@ -25,7 +25,7 @@ $HOME/.ssh/config
 
 ## 功能
 
-- 列出 `~/.ssh/config` 中配置的所有 Host
+- 列出 `~/.ssh/config` 中配置的所有 Host，并显示已配置的端口转发
 - 通过 Host 别名快速连接服务器
 - 通过列表序号连接服务器
 - 交互式添加新的 SSH Host
@@ -229,6 +229,6 @@ ssh -N -T <Host别名>
 
 - `Host *` 会被列表功能忽略。
 - Host 别名需要与 `Host` 行完全匹配。
-- 当前脚本只解析并展示 `HostName`、`User`、`Port`、`IdentityFile`、`StrictHostKeyChecking` 和 `LocalForward` 等常用字段。
+- 当前脚本只解析并展示 `HostName`、`User`、`Port`、`IdentityFile`、`StrictHostKeyChecking`、`LocalForward`、`DynamicForward` 和 `RemoteForward` 等常用字段。
 - 其它 SSH config 字段仍会由 `ssh` 命令正常处理。
 - 如果 `~/.ssh/config` 不存在，脚本会自动创建空文件。

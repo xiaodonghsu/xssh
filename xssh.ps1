@@ -105,6 +105,7 @@ function Parse-HostConfig {
     $identityFile = ""
     $strictCheck = ""
     $localForwards = @()
+    $forwardRules = @()
 
     $lines = Get-Content $ConfigFile
     foreach ($line in $lines) {
@@ -140,7 +141,12 @@ function Parse-HostConfig {
                 "Port"     { $port = $value }
                 "IdentityFile" { $identityFile = $value }
                 "StrictHostKeyChecking" { $strictCheck = $value }
-                "LocalForward" { $localForwards += $value }
+                "LocalForward" {
+                    $localForwards += $value
+                    $forwardRules += "$key $value"
+                }
+                "DynamicForward" { $forwardRules += "$key $value" }
+                "RemoteForward" { $forwardRules += "$key $value" }
             }
         }
     }
@@ -158,6 +164,7 @@ function Parse-HostConfig {
         IdentityFile  = $identityFile
         StrictCheck   = $strictCheck
         LocalForwards = $localForwards
+        ForwardRules  = $forwardRules
     }
 }
 
@@ -211,19 +218,21 @@ function List-Servers {
     }
     
     Write-Host "可用的服务器:"
-    Write-Host "────────────────────────────────────────────────────────────────"
-    Write-Host ("  {0,-4}  {1,-20}  {2}@{3}:{4}" -f "序号", "Host别名", "用户", "主机", "端口")
-    Write-Host "────────────────────────────────────────────────────────────────"
+    Write-Host "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    Write-Host ("  {0,-4}  {1,-20}  {2,-35}  {3}" -f "序号", "Host别名", "服务器", "端口转发")
+    Write-Host "────────────────────────────────────────────────────────────────────────────────────────────────────"
     
     $index = 1
     foreach ($h in $hosts) {
         $config = Parse-HostConfig $h
         if ($null -ne $config) {
-            Write-Host ("  {0,-4}  {1,-20}  {2}@{3}:{4}" -f $index, $h, $config.User, $config.HostName, $config.Port)
+            $server = "$($config.User)@$($config.HostName):$($config.Port)"
+            $forwardRules = $config.ForwardRules -join "; "
+            Write-Host ("  {0,-4}  {1,-20}  {2,-35}  {3}" -f $index, $h, $server, $forwardRules)
         }
         $index++
     }
-    Write-Host "────────────────────────────────────────────────────────────────"
+    Write-Host "────────────────────────────────────────────────────────────────────────────────────────────────────"
 }
 
 # 按列表序号获取 Host（1-based）
